@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Clip to SCL",
+  "version": "1.0.0",
+  "description": "Send the page you are viewing (and any text you selected) to SCL Professional Intelligence as an unreviewed source.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "action": { "default_title": "Clip to SCL", "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js" },
+  "options_ui": { "page": "popup.html#settings", "open_in_tab": false }
+}

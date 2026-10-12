@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clip to SCL</title>
+<style>
+  body { width: 340px; margin: 0; font: 13px/1.45 system-ui, sans-serif; color: #172c26; }
+  header { background: #172c26; color: #d9ef79; padding: 10px 14px; font-weight: 700; }
+  main { padding: 12px 14px; }
+  .muted { color: #64748b; font-size: 12px; }
+  .url { word-break: break-all; font-size: 11px; color: #64748b; }
+  textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 8px; font: inherit; }
+  textarea { height: 110px; font-size: 12px; }
+  button { margin-top: 10px; width: 100%; border: 0; border-radius: 10px; padding: 9px; background: #172c26; color: #fff; font-weight: 600; cursor: pointer; }
+  button.secondary { background: #fff; color: #172c26; border: 1px solid #cbd5e1; }
+  .error { color: #b91c1c; font-size: 12px; margin-top: 8px; }
+  label { display: block; margin-top: 10px; font-size: 12px; color: #475569; }
+  #settings { display: none; }
+  body.settings #clip { display: none; } body.settings #settings { display: block; }
+</style>
+</head>
+<body>
+<header>scl. Clip to SCL</header>
+<main>
+  <section id="clip">
+    <div id="title" style="font-weight:600"></div>
+    <div id="url" class="url"></div>
+    <label for="selection">Selected text (edit before sending)</label>
+    <textarea id="selection" placeholder="Select text on the page before opening this popup, or paste it here."></textarea>
+    <p class="muted">Sent only to your SCL app. You will choose the professional and review it there. Emails and phone numbers are removed by default.</p>
+    <button id="send">Clip to SCL</button>
+    <button id="openSettings" class="secondary">Settings</button>
+    <div id="error" class="error"></div>
+  </section>
+  <section id="settings">
+    <label for="appUrl">SCL app address</label>
+    <input id="appUrl" placeholder="http://127.0.0.1:3000">
+    <p class="muted">Where your SCL dashboard runs. Default: http://127.0.0.1:3000</p>
+    <button id="save">Save</button>
+    <div id="saved" class="muted"></div>
+  </section>
+</main>
+<script src="shared.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

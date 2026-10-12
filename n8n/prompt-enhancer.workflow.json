@@ -1,0 +1,10 @@
+{
+  "name": "SCL Brand Prompt Enhancer",
+  "nodes": [
+    {"parameters":{"httpMethod":"POST","path":"scl-brand-prompt-enhance","responseMode":"lastNode"},"id":"webhook","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[0,0]},
+    {"parameters":{"jsCode":"const secret=$env.N8N_WEBHOOK_SECRET; if(secret && $json.headers?.['x-webhook-secret']!==secret) throw new Error('Unauthorized'); const prompt=$json.body?.prompt; if(!prompt) throw new Error('prompt required'); const apiKey=$env.OPENAI_API_KEY; const model=$env.OPENAI_MODEL; if(!apiKey||!model) throw new Error('OPENAI_API_KEY and OPENAI_MODEL are required'); const response=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},body:JSON.stringify({model,input:[{role:'system',content:'You refine image-generation prompts. Preserve every approved brand rule and supplied text exactly. Improve only specificity, composition, hierarchy and visual direction. Return only the final prompt.'},{role:'user',content:prompt}]})}); if(!response.ok) throw new Error(`OpenAI ${response.status}: ${await response.text()}`); const result=await response.json(); const enhanced=result.output_text||result.output?.flatMap(o=>o.content||[]).find(c=>c.type==='output_text')?.text; if(!enhanced) throw new Error('No prompt returned'); return [{json:{prompt:enhanced}}];"},"id":"validate","name":"Enhance Prompt","type":"n8n-nodes-base.code","typeVersion":2,"position":[260,0]},
+    {"parameters":{"respondWith":"json","responseBody":"={{ { prompt: $json.prompt } }}"},"id":"respond","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1.4,"position":[520,0]}
+  ],
+  "connections":{"Webhook":{"main":[[{"node":"Enhance Prompt","type":"main","index":0}]]},"Enhance Prompt":{"main":[[{"node":"Respond","type":"main","index":0}]]}},
+  "settings":{"executionOrder":"v1"},"active":false
+}

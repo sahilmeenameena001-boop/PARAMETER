@@ -1,0 +1,142 @@
+import type { Claim, ClaimField, Confidence, Member, SourceEvidence, SourceStatus, SourceTier } from "@/types/professional-intelligence";
+import { canReview } from "./access.ts";
+import { CLAIM_FIELD_LABEL, SINGLE_VALUE_FIELDS, STALE_AFTER_DAYS, TIER_A_REQUIRED } from "./constants.ts";
+
+const DAY = 86_400_000;
+const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
+const TIER_RANK: Record<SourceTier, number> = { A: 3, B: 2, C: 1, D: 0 };
+
+export class WorkflowError extends Error {
+  constructor(message: string) { super(message); this.name = "WorkflowError"; }
+}
+
+export function isSourceStale(source: Pick<SourceEvidence, "accessedAt">, now = new Date()) {
+  if (!source.accessedAt) return true;
+  return now.getTime() - new Date(source.accessedAt).getTime() > STALE_AFTER_DAYS * DAY;
+}
+
+/** Status shown to users: a verified source that has not been re-checked recently is presented as stale. */
+export function effectiveSourceStatus(source: SourceEvidence, now = new Date()): SourceStatus {
+  if (source.status === "verified" && isSourceStale(source, now)) return "stale";
+  return source.status;
+}
+
+export function maxConfidenceForTier(tier: SourceTier): Confidence {
+  return tier === "A" || tier === "B" ? "high" : tier === "C" ? "medium" : "low";
+}
+
+export function bestVerifiedTier(sourceIds: string[], sources: SourceEvidence[], now = new Date()): SourceTier | null {
+  const tiers = sources
+    .filter((s) => sourceIds.includes(s.id) && effectiveSourceStatus(s, now) === "verified")
+    .map((s) => s.tier)
+    .sort((a, b) => TIER_RANK[b] - TIER_RANK[a]);
+  return tiers[0] ?? null;
+}
+
+const norm = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const live = (c: Claim) => c.status !== "rejected";
+
+/**
+ * Adds a claim without ever overwriting a verified value.
+ * Same value → evidence is merged into the existing claim (status untouched).
+ * Different value on a single-value field → the new claim is stored as disputed next to the existing one.
+ */
+export function addClaim(claims: Claim[], incoming: Claim): { claims: Claim[]; conflicts: Claim[]; merged: boolean } {
+  const peers = claims.filter((c) => live(c) && c.professionalId === incoming.professionalId && c.field === incoming.field && (c.label ?? "") === (incoming.label ?? ""));
+  const same = peers.find((c) => norm(c.value) === norm(incoming.value));
+  if (same) {
+    const sourceIds = Array.from(new Set([...same.sourceIds, ...incoming.sourceIds]));
+    return { claims: claims.map((c) => (c.id === same.id ? { ...c, sourceIds, updatedAt: incoming.updatedAt } : c)), conflicts: [], merged: true };
+  }
+  if (!SINGLE_VALUE_FIELDS.includes(incoming.field) || !peers.length) {
+    return { claims: [...claims, { ...incoming, status: incoming.status === "verified" ? "unverified" : incoming.status }], conflicts: [], merged: false };
+  }
+  // Conflict: verified peers keep their status; unverified peers become disputed; the newcomer is disputed.
+  const next = claims.map((c) => (peers.some((p) => p.id === c.id) && c.status === "unverified" ? { ...c, status: "disputed" as const } : c));
+  return { claims: [...next, { ...incoming, status: "disputed" }], conflicts: peers, merged: false };
+}
+
+export function findConflicts(claims: Claim[]): { professionalId: string; field: ClaimField; claims: Claim[] }[] {
+  const groups = new Map<string, Claim[]>();
+  for (const c of claims.filter((c) => live(c) && SINGLE_VALUE_FIELDS.includes(c.field))) {
+    const key = `${c.professionalId}|${c.field}`;
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  return [...groups.values()]
+    .filter((g) => new Set(g.map((c) => norm(c.value))).size > 1)
+    .map((g) => ({ professionalId: g[0].professionalId, field: g[0].field, claims: g }));
+}
+
+export function verifyClaim(
+  claim: Claim,
+  ctx: { claims: Claim[]; sources: SourceEvidence[]; actor: Member; confidence: Confidence; now?: Date; supersedeIds?: string[] },
+): { claim: Claim; superseded: string[] } {
+  const now = ctx.now ?? new Date();
+  if (!canReview(ctx.actor)) throw new WorkflowError("Only a legal reviewer or admin can verify claims.");
+  if (claim.status === "rejected") throw new WorkflowError("Rejected claims cannot be verified. Add a new claim instead.");
+  const tier = bestVerifiedTier(claim.sourceIds, ctx.sources, now);
+  if (!tier) throw new WorkflowError("Link at least one verified, current source before verifying this claim.");
+  if (TIER_A_REQUIRED.includes(claim.field) && tier !== "A") {
+    throw new WorkflowError(`${CLAIM_FIELD_LABEL[claim.field]} can only be verified against an official (Tier A) record.`);
+  }
+  const cap = maxConfidenceForTier(tier);
+  if (CONFIDENCE_RANK[ctx.confidence] > CONFIDENCE_RANK[cap]) {
+    throw new WorkflowError(`Tier ${tier} evidence supports at most "${cap}" confidence.`);
+  }
+  const supersede = ctx.supersedeIds ?? [];
+  if (SINGLE_VALUE_FIELDS.includes(claim.field)) {
+    const rivals = ctx.claims.filter((c) => c.id !== claim.id && live(c) && c.professionalId === claim.professionalId && c.field === claim.field && norm(c.value) !== norm(claim.value));
+    const blocking = rivals.filter((c) => c.status === "verified" && !supersede.includes(c.id));
+    if (blocking.length) throw new WorkflowError("Another verified value exists. Explicitly supersede it (reviewer decision) before verifying this one.");
+    for (const r of rivals.filter((c) => supersede.includes(c.id))) {
+      if (CONFIDENCE_RANK[ctx.confidence] < CONFIDENCE_RANK[r.confidence]) {
+        throw new WorkflowError("A lower-confidence claim cannot supersede a verified higher-confidence claim.");
+      }
+    }
+  }
+  const at = now.toISOString();
+  return {
+    claim: { ...claim, status: "verified", confidence: ctx.confidence, reviewerId: ctx.actor.id, verifiedAt: at, supersedesId: supersede[0] ?? claim.supersedesId, updatedAt: at },
+    superseded: supersede,
+  };
+}
+
+export function verifySource(source: SourceEvidence, actor: Member, method: string, now = new Date()): SourceEvidence {
+  if (!canReview(actor)) throw new WorkflowError("Only a legal reviewer or admin can verify sources.");
+  if (!method.trim()) throw new WorkflowError("Record how the source was verified (e.g. 'Opened official PDF, matched row 273').");
+  if (source.status === "inaccessible") throw new WorkflowError("This source is marked inaccessible. Attach the evidence or re-open it before verifying.");
+  const at = now.toISOString();
+  return { ...source, status: "verified", verificationMethod: method.trim(), reviewerId: actor.id, reviewedAt: at, accessedAt: source.accessedAt ?? at, updatedAt: at };
+}
+
+const COMPLETENESS_FIELDS: ClaimField[] = ["canonical_name", "profession", "location", "bar_enrolment", "affiliation", "education", "practice_area", "publication", "profile_link", "contact"];
+
+export function profileCompleteness(claims: Claim[], professionalId: string) {
+  const mine = claims.filter((c) => c.professionalId === professionalId && live(c));
+  const items = COMPLETENESS_FIELDS.map((field) => {
+    const fc = mine.filter((c) => c.field === field);
+    return { field, present: fc.length > 0, verified: fc.some((c) => c.status === "verified") };
+  });
+  const present = items.filter((i) => i.present).length;
+  const verified = items.filter((i) => i.verified).length;
+  return { items, presentPercent: Math.round((present / items.length) * 100), verifiedPercent: Math.round((verified / items.length) * 100) };
+}
+
+export interface QualityWarning { level: "info" | "warning"; message: string; entityId?: string }
+
+export function dataQualityWarnings(input: { claims: Claim[]; sources: SourceEvidence[]; professionalId: string; now?: Date }): QualityWarning[] {
+  const now = input.now ?? new Date();
+  const mine = input.claims.filter((c) => c.professionalId === input.professionalId && live(c));
+  const warnings: QualityWarning[] = [];
+  for (const c of mine.filter((c) => !c.sourceIds.length)) warnings.push({ level: "warning", message: `"${c.value}" (${CLAIM_FIELD_LABEL[c.field]}) has no source attached — research lead only.`, entityId: c.id });
+  for (const g of findConflicts(mine)) warnings.push({ level: "warning", message: `Conflicting values for ${CLAIM_FIELD_LABEL[g.field]}: ${g.claims.map((c) => `"${c.value}"`).join(" vs ")}.` });
+  const used = new Set(mine.flatMap((c) => c.sourceIds));
+  for (const s of input.sources.filter((s) => used.has(s.id))) {
+    if (s.status === "inaccessible") warnings.push({ level: "info", message: `Source "${s.title}" could not be accessed automatically — manual review needed.`, entityId: s.id });
+    else if (s.status === "contradicted") warnings.push({ level: "warning", message: `Source "${s.title}" is contradicted by other evidence.`, entityId: s.id });
+    else if (isSourceStale(s, now)) warnings.push({ level: "info", message: `Source "${s.title}" was last accessed over ${STALE_AFTER_DAYS} days ago.`, entityId: s.id });
+  }
+  const unverified = mine.filter((c) => c.status !== "verified").length;
+  if (unverified) warnings.push({ level: "info", message: `${unverified} claim(s) await verification and must not be published as fact.` });
+  return warnings;
+}
