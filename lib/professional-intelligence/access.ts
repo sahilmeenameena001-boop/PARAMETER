@@ -16,8 +16,11 @@ export function canSeeVisibility(member: Pick<Member, "role"> | null | undefined
   return hasRole(member, "legal_reviewer");
 }
 
+/** Personal contact data: phone/email channels and office addresses. Restricted by default. */
+export const isContactField = (field: Claim["field"]) => field === "contact" || field === "office_address";
+
 /** Contact values are redacted unless the member may see them. The claim still shows that a sourced channel exists. */
 export function redactClaim(claim: Claim, member: Pick<Member, "role"> | null | undefined): Claim & { redacted: boolean } {
-  if (claim.field !== "contact" || canSeeVisibility(member, claim.visibility)) return { ...claim, redacted: false };
+  if (!isContactField(claim.field) || canSeeVisibility(member, claim.visibility)) return { ...claim, redacted: false };
   return { ...claim, value: "Restricted — reviewer access required", redacted: true };
 }

@@ -23,7 +23,7 @@ export const CLAIM_FIELD_LABEL: Record<ClaimField, string> = {
   canonical_name: "Canonical name", alias: "Alias", profession: "Profession", location: "Professional location",
   bar_enrolment: "Bar enrolment", affiliation: "Affiliation", role: "Role / appointment", education: "Education",
   credential: "Credential", practice_area: "Practice area", publication: "Publication", speaking: "Speaking / training",
-  contact: "Contact channel", profile_link: "Profile link",
+  contact: "Contact channel", office_address: "Office address", photo: "Photo", profile_link: "Profile link",
 };
 
 // Fields that can hold only one current value; two different live values are a conflict.

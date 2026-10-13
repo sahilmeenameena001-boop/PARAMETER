@@ -45,7 +45,7 @@ create table public.pi_source_evidence (
 
 create table public.pi_claims (
   id uuid primary key default gen_random_uuid(), professional_id uuid not null references public.pi_professionals(id) on delete cascade,
-  field text not null check (field in ('canonical_name','alias','profession','location','bar_enrolment','affiliation','role','education','credential','practice_area','publication','speaking','contact','profile_link')),
+  field text not null check (field in ('canonical_name','alias','profession','location','bar_enrolment','affiliation','role','education','credential','practice_area','publication','speaking','contact','office_address','photo','profile_link')),
   value text not null, label text, effective_from date, effective_to date,
   basis text not null default 'stated' check (basis in ('stated','inferred')),
   confidence public.pi_confidence not null default 'low', status public.pi_claim_status not null default 'unverified',
@@ -54,7 +54,7 @@ create table public.pi_claims (
   notes text not null default '', created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   check (effective_to is null or effective_from is null or effective_to >= effective_from),
   check (status <> 'verified' or (reviewer_id is not null and verified_at is not null)),
-  check (field <> 'contact' or visibility <> 'public' or status = 'verified')
+  check (field not in ('contact','office_address') or visibility <> 'public' or status = 'verified')
 );
 create table public.pi_claim_evidence (
   claim_id uuid not null references public.pi_claims(id) on delete cascade,
@@ -65,7 +65,7 @@ create table public.pi_claim_evidence (
 -- Convenience views matching the suggested entity names; claims remain the single provenance store.
 create view public.pi_professional_aliases with (security_invoker = true) as select * from public.pi_claims where field in ('canonical_name','alias');
 create view public.pi_professional_affiliations with (security_invoker = true) as select * from public.pi_claims where field in ('affiliation','role');
-create view public.pi_professional_contacts with (security_invoker = true) as select * from public.pi_claims where field = 'contact';
+create view public.pi_professional_contacts with (security_invoker = true) as select * from public.pi_claims where field in ('contact','office_address');
 create view public.pi_practice_expertise with (security_invoker = true) as select * from public.pi_claims where field = 'practice_area';
 
 create table public.pi_court_cases (

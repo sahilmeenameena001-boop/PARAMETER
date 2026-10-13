@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, Radar, X } from "lucide-react";
 import type { DiscoveryCandidate } from "@/types/professional-intelligence";
-import { canEdit } from "@/lib/professional-intelligence/access";
+import { canEdit, canReview } from "@/lib/professional-intelligence/access";
 import { CLAIM_FIELD_LABEL } from "@/lib/professional-intelligence/constants";
 import { acceptCandidate, DEPTH_QUERIES, rejectCandidate, type DiscoveryDepth } from "@/lib/professional-intelligence/discovery";
 import { Badge, button, card, field, primary, SectionTitle, TierBadge } from "./ui";
 import type { TabProps } from "./useWorkspace";
 
+const isContact = (f: string) => f === "contact" || f === "office_address";
+const mask = (v: string) => (v.length <= 4 ? "••••" : `${v.slice(0, 2)}${"•".repeat(Math.min(8, v.length - 4))}${v.slice(-2)}`);
 const scoreTone = (s: number) => (s >= 70 ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : s >= 45 ? "bg-amber-50 text-amber-800 ring-amber-200" : "bg-red-50 text-red-700 ring-red-200");
 
 export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps) {
@@ -23,7 +25,12 @@ export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps
   const [show, setShow] = useState<"pending" | "all">("pending");
   const [minScore, setMinScore] = useState(0);
 
-  useEffect(() => { fetch("/api/professional-intelligence/discover").then((r) => r.json()).then((j) => setConfigured(!!j.configured)).catch(() => setConfigured(false)); }, []);
+  useEffect(() => {
+    const check = () => fetch("/api/professional-intelligence/discover").then((r) => r.json()).then((j) => setConfigured(!!j.configured)).catch(() => setConfigured(false));
+    check();
+    window.addEventListener("pi-settings-changed", check);
+    return () => window.removeEventListener("pi-settings-changed", check);
+  }, []);
 
   const candidates = ws.candidates.filter((c) => c.professionalId === pid && (show === "all" || c.status === "pending") && c.matchScore >= minScore);
   const pendingCount = ws.candidates.filter((c) => c.professionalId === pid && c.status === "pending").length;
@@ -58,9 +65,9 @@ export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps
 
     {configured === false && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
       <p className="font-semibold">Setup needed</p>
-      <p className="mt-1">Add your Firecrawl API key to <code>.env.local</code> in the project folder, then restart the server:</p>
-      <pre className="mt-2 rounded bg-white/70 p-2 text-xs">FIRECRAWL_API_KEY=fc-your-key</pre>
-      <p className="mt-1 text-xs">Get a key at firecrawl.dev → API keys. It stays on the server and is never sent to the browser.</p>
+      <p className="mt-1">Connect your Firecrawl account once: copy your API key from firecrawl.dev and paste it in Settings. No file editing or restart needed.</p>
+      <button className={`${primary} mt-3`} onClick={() => window.dispatchEvent(new Event("pi-open-settings"))}>Add Firecrawl key</button>
+      <p className="mt-2 text-xs">The key is stored only in <code>.env.local</code> on this computer and is never sent to the browser.</p>
     </div>}
 
     <div className="flex flex-wrap items-end gap-3">
@@ -71,7 +78,7 @@ export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps
       <label className="flex items-center gap-2 pb-2 text-xs text-slate-500"><input type="checkbox" checked={readPages} onChange={(e) => setReadPages(e.target.checked)} />Read result pages</label>
       <button className={primary} disabled={busy || !canEdit(actor) || configured === false} onClick={discover}><Radar size={15} />{busy ? "Discovering…" : "Auto-discover"}</button>
     </div>
-    <p className="mt-2 text-[11px] text-slate-400">Approx. {estimate} Firecrawl credits per run. Login-walled sites (LinkedIn, Facebook, Instagram) contribute only their public search snippet; pages disallowed by robots.txt are not read. Phone numbers and emails are never captured.</p>
+    <p className="mt-2 text-[11px] text-slate-400">Approx. {estimate} Firecrawl credits per run. Login-walled sites (LinkedIn, Facebook, Instagram) contribute only their public search snippet; pages disallowed by robots.txt are not read. Emails, phone numbers and office addresses found on pages about this person are proposed as restricted facts (visible to reviewers only) and stripped from stored page text.</p>
     {progress && <p role="status" className="mt-3 animate-pulse rounded-lg bg-slate-50 p-2 text-sm text-slate-600">{progress}</p>}
 
     {ws.candidates.some((c) => c.professionalId === pid) && <div className="mt-5 flex flex-wrap items-center gap-3 border-t pt-4 text-xs">
@@ -80,7 +87,7 @@ export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps
       {pendingCount > 0 && <button className={`${button} !py-1 text-xs`} disabled={!canEdit(actor)} onClick={() => run("Rejected low-match candidates", (w) => ({ ...w, candidates: w.candidates.map((c) => (c.professionalId === pid && c.status === "pending" && c.matchScore < 45 ? { ...c, status: "rejected" } : c)) }))}>Reject all below 45</button>}
     </div>}
 
-    <div className="mt-4 space-y-3">{candidates.map((c) => <CandidateCard key={c.id} c={c} disabled={!canEdit(actor)} onAccept={(pick) => {
+    <div className="mt-4 space-y-3">{candidates.map((c) => <CandidateCard key={c.id} c={c} showContacts={canReview(actor)} disabled={!canEdit(actor)} onAccept={(pick) => {
       run("Accepted discovery candidate", (w) => acceptCandidate(w, c.id, pick), { entity: "candidate", id: c.id });
       notify(`Added as an unreviewed source${pick.suggestionIdx.length ? ` with ${pick.suggestionIdx.length} unverified claim(s)` : ""}${pick.cnrs.length ? ` and ${pick.cnrs.length} court record(s)` : ""}. Verify in the Evidence Registry.`);
     }} onReject={() => run("Rejected discovery candidate", (w) => rejectCandidate(w, c.id), { entity: "candidate", id: c.id })} />)}
@@ -89,7 +96,7 @@ export default function DiscoveryPanel({ ws, pid, actor, run, notify }: TabProps
   </section>;
 }
 
-function CandidateCard({ c, disabled, onAccept, onReject }: { c: DiscoveryCandidate; disabled: boolean; onAccept: (pick: { suggestionIdx: number[]; cnrs: string[] }) => void; onReject: () => void }) {
+function CandidateCard({ c, disabled, showContacts, onAccept, onReject }: { c: DiscoveryCandidate; disabled: boolean; showContacts: boolean; onAccept: (pick: { suggestionIdx: number[]; cnrs: string[] }) => void; onReject: () => void }) {
   const [sel, setSel] = useState<number[]>(() => (c.matchScore >= 60 ? c.suggestions.map((_, i) => i) : []));
   const [cnrs, setCnrs] = useState<string[]>([]);
   const done = c.status !== "pending";
@@ -111,7 +118,9 @@ function CandidateCard({ c, disabled, onAccept, onReject }: { c: DiscoveryCandid
       <legend className="mb-1 text-xs font-semibold">Suggested facts (become unverified claims)</legend>
       <ul className="space-y-1">{c.suggestions.map((s, i) => <li key={i}><label className="flex items-start gap-2 text-xs">
         <input type="checkbox" className="mt-0.5" checked={sel.includes(i)} onChange={(e) => setSel(e.target.checked ? [...sel, i] : sel.filter((x) => x !== i))} />
-        <span><b>{CLAIM_FIELD_LABEL[s.field]}:</b> {s.value}<span className="block text-slate-400">“{s.excerpt.slice(0, 220)}{s.excerpt.length > 220 ? "…" : ""}”</span></span>
+        {isContact(s.field) && !showContacts
+          ? <span><b>{CLAIM_FIELD_LABEL[s.field]}{s.label ? ` (${s.label})` : ""}:</b> {mask(s.value)} <span className="text-slate-400">· restricted — visible to reviewers</span></span>
+          : <span><b>{CLAIM_FIELD_LABEL[s.field]}{isContact(s.field) && s.label ? ` (${s.label})` : ""}:</b> {s.value}{isContact(s.field) && <span className="ml-1 text-[10px] text-slate-500">· saved as restricted</span>}<span className="block text-slate-400">“{s.excerpt.slice(0, 220)}{s.excerpt.length > 220 ? "…" : ""}”</span></span>}
       </label></li>)}</ul>
     </fieldset>}
     {c.cnrs.length > 0 && <fieldset className="mt-3" disabled={done || disabled}>

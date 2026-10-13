@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, Lock, Pencil, Plus, Search, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import type { Claim, ClaimField, Confidence, Visibility } from "@/types/professional-intelligence";
-import { canEdit, canReview, redactClaim } from "@/lib/professional-intelligence/access";
+import { canEdit, canReview, isContactField, redactClaim } from "@/lib/professional-intelligence/access";
 import { CLAIM_FIELD_LABEL, TIER_A_REQUIRED } from "@/lib/professional-intelligence/constants";
 import { searchLinks } from "@/lib/professional-intelligence/research";
 import { deleteClaim, deleteProfessional } from "@/lib/professional-intelligence/workspace-ops";
@@ -82,11 +82,15 @@ export default function ProfileTab(props: TabProps) {
                 <StatusBadge status={c.status} />
                 <Badge tone={c.basis === "inferred" ? "bg-violet-50 text-violet-800 ring-violet-200" : undefined}>{c.basis === "inferred" ? "Inferred" : "Stated in source"}</Badge>
                 <Badge>Confidence: {c.confidence}</Badge>
-                {c.field === "contact" && <Badge tone="bg-slate-100 text-slate-600 ring-slate-300"><Lock size={10} />{c.visibility}</Badge>}
+                {isContactField(c.field) && (canReview(actor) && !c.redacted
+                  ? <select aria-label={`Visibility of ${c.value}`} className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px]" value={c.visibility} onChange={(e) => run("Changed contact visibility", (w) => ({ ...w, claims: w.claims.map((x) => (x.id === c.id ? { ...x, visibility: e.target.value as Visibility, updatedAt: nowIso() } : x)) }), { entity: "claim", id: c.id })}>
+                      <option value="restricted">restricted</option><option value="internal">internal</option><option value="public" disabled={c.status !== "verified"}>public{c.status !== "verified" ? " (verify first)" : ""}</option>
+                    </select>
+                  : <Badge tone="bg-slate-100 text-slate-600 ring-slate-300"><Lock size={10} />{c.visibility}</Badge>)}
                 {inConflict && <Badge tone="bg-red-50 text-red-700 ring-red-200">Conflict</Badge>}
                 {tier && <TierBadge tier={tier} />}
               </div>
-              <p className={`mt-2 break-words ${c.redacted ? "italic text-slate-400" : "font-medium"}`}>{c.field === "profile_link" && !c.redacted ? <a className="underline" href={c.value} target="_blank" rel="noopener noreferrer">{c.value}</a> : c.value}</p>
+              <p className={`mt-2 break-words ${c.redacted ? "italic text-slate-400" : "font-medium"}`}>{c.field === "photo" && !c.redacted && /^https?:\/\//.test(c.value) ? <span className="flex items-center gap-3"><img src={c.value} alt="" referrerPolicy="no-referrer" className="h-16 w-16 rounded-xl object-cover ring-1 ring-slate-200" /><a className="break-all text-xs underline" href={c.value} target="_blank" rel="noopener noreferrer">{c.value}</a></span> : c.field === "profile_link" && !c.redacted ? <a className="underline" href={c.value} target="_blank" rel="noopener noreferrer">{c.value}</a> : c.value}</p>
               {(c.effectiveFrom || c.effectiveTo) && <p className="mt-1 text-xs text-slate-500">Effective {fmtDate(c.effectiveFrom)} – {c.effectiveTo ? fmtDate(c.effectiveTo) : "present / unknown"}</p>}
               {c.notes && <p className="mt-1 text-xs text-slate-500">{c.notes}</p>}
               <div className="mt-3"><SourceLinks ids={c.sourceIds} sources={ws.sources} /></div>
@@ -123,14 +127,15 @@ function AddClaim({ ws, pid, run, notify, onClose, initial }: Pick<TabProps, "ws
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!f.value.trim()) return notify("Enter a value.", "error");
+    if ((f.field === "photo" || f.field === "profile_link") && !/^https?:\/\/\S+$/.test(f.value.trim())) return notify("Enter the full image/page URL starting with https://", "error");
     if (f.effectiveFrom && f.effectiveTo && f.effectiveTo < f.effectiveFrom) return notify("Effective end date is before the start date.", "error");
     const at = nowIso();
     if (initial) {
-      const edited: Claim = { ...initial, field: f.field, value: f.value.trim(), label: f.label.trim() || null, effectiveFrom: f.effectiveFrom || null, effectiveTo: f.effectiveTo || null, basis: f.basis, confidence: f.confidence, visibility: f.field === "contact" && f.visibility === "public" ? "restricted" : f.visibility, sourceIds: f.sourceIds, notes: f.notes, status: initial.status === "rejected" ? "rejected" : "unverified", updatedAt: at };
+      const edited: Claim = { ...initial, field: f.field, value: f.value.trim(), label: f.label.trim() || null, effectiveFrom: f.effectiveFrom || null, effectiveTo: f.effectiveTo || null, basis: f.basis, confidence: f.confidence, visibility: isContactField(f.field) && f.visibility === "public" ? "restricted" : f.visibility, sourceIds: f.sourceIds, notes: f.notes, status: initial.status === "rejected" ? "rejected" : "unverified", updatedAt: at };
       run("Edited claim", (w) => ({ ...w, claims: w.claims.map((c) => (c.id === initial.id ? edited : c)) }), { entity: "claim", id: initial.id });
       notify("Claim updated (unverified until reviewed)."); onClose(); return;
     }
-    const incoming: Claim = { id: newId("cl"), professionalId: pid, field: f.field, value: f.value.trim(), label: f.label.trim() || null, effectiveFrom: f.effectiveFrom || null, effectiveTo: f.effectiveTo || null, basis: f.basis, confidence: f.confidence, status: "unverified", visibility: f.field === "contact" ? (f.visibility === "public" ? "restricted" : f.visibility) : f.visibility, sourceIds: f.sourceIds, reviewerId: null, verifiedAt: null, supersedesId: null, notes: f.notes, createdAt: at, updatedAt: at };
+    const incoming: Claim = { id: newId("cl"), professionalId: pid, field: f.field, value: f.value.trim(), label: f.label.trim() || null, effectiveFrom: f.effectiveFrom || null, effectiveTo: f.effectiveTo || null, basis: f.basis, confidence: f.confidence, status: "unverified", visibility: isContactField(f.field) ? (f.visibility === "public" ? "restricted" : f.visibility) : f.visibility, sourceIds: f.sourceIds, reviewerId: null, verifiedAt: null, supersedesId: null, notes: f.notes, createdAt: at, updatedAt: at };
     const result = addClaim(ws.claims, incoming);
     run("Added claim", (w) => ({ ...w, claims: result.claims }), { entity: "claim", id: incoming.id });
     notify(result.merged ? "Same value already recorded — the new evidence was merged into it." : result.conflicts.length ? "Saved as disputed: it conflicts with an existing value. Existing verified values were not changed." : f.sourceIds.length ? "Claim added as unverified." : "Claim added as an unsourced research lead.");
@@ -138,14 +143,14 @@ function AddClaim({ ws, pid, run, notify, onClose, initial }: Pick<TabProps, "ws
   }
   return <Modal title={initial ? "Edit claim" : "Add claim"} onClose={onClose} wide>
     <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-      <Labeled text="Field"><select className={field} value={f.field} onChange={(e) => set("field", e.target.value as ClaimField)}>{Object.entries(CLAIM_FIELD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Labeled>
+      <Labeled text="Field"><select className={field} value={f.field} onChange={(e) => { const v = e.target.value as ClaimField; set("field", v); if (isContactField(v)) set("visibility", "restricted"); }}>{Object.entries(CLAIM_FIELD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Labeled>
       <Labeled text="Label (organisation, channel type…)"><input className={field} value={f.label} onChange={(e) => set("label", e.target.value)} maxLength={200} /></Labeled>
       <Labeled text="Value" className="md:col-span-2"><input required className={field} value={f.value} onChange={(e) => set("value", e.target.value)} maxLength={500} /></Labeled>
       <Labeled text="Basis"><select className={field} value={f.basis} onChange={(e) => set("basis", e.target.value as Claim["basis"])}><option value="stated">Stated in source</option><option value="inferred">Inferred</option></select></Labeled>
       <Labeled text="Proposed confidence"><select className={field} value={f.confidence} onChange={(e) => set("confidence", e.target.value as Confidence)}>{["low", "medium", "high"].map((c) => <option key={c}>{c}</option>)}</select></Labeled>
       <Labeled text="Effective from"><input type="date" className={field} value={f.effectiveFrom} onChange={(e) => set("effectiveFrom", e.target.value)} /></Labeled>
       <Labeled text="Effective to"><input type="date" className={field} value={f.effectiveTo} onChange={(e) => set("effectiveTo", e.target.value)} /></Labeled>
-      {f.field === "contact" && <Labeled text="Visibility (contacts start restricted; public needs reviewer decision)" className="md:col-span-2"><select className={field} value={f.visibility} onChange={(e) => set("visibility", e.target.value as Visibility)}><option value="restricted">Restricted — reviewers/admins</option><option value="internal">Internal — all workspace members</option></select></Labeled>}
+      {isContactField(f.field) && <Labeled text="Visibility (contacts start restricted; a reviewer can make a verified contact public)" className="md:col-span-2"><select className={field} value={f.visibility} onChange={(e) => set("visibility", e.target.value as Visibility)}><option value="restricted">Restricted — reviewers/admins</option><option value="internal">Internal — all workspace members</option></select></Labeled>}
       <div className="md:col-span-2"><p className="mb-1.5 text-xs font-medium text-slate-500">Sources</p><MultiSelect label="Sources" items={ws.sources} selected={f.sourceIds} onChange={(ids) => set("sourceIds", ids)} render={(s) => <><b>Tier {s.tier}</b> · {s.title} <span className="text-slate-400">({s.status})</span></>} /></div>
       <Labeled text="Notes" className="md:col-span-2"><textarea className={field} rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></Labeled>
       <div className="flex justify-end gap-2 md:col-span-2"><button type="button" className={button} onClick={onClose}>Cancel</button><button className={primary}>{initial ? "Save changes" : "Save as unverified"}</button></div>

@@ -67,6 +67,22 @@ Accepting a candidate creates an **unreviewed** source (with the discovery query
 
 Folder: `browser-extension/clip-to-scl` (see its README). Install via `chrome://extensions` → Developer mode → **Load unpacked**. Highlight text on any page (including pages SCL must not fetch, like LinkedIn) → right-click **Clip selection to SCL** or use the toolbar popup. The app opens with the clip; choose the professional, edit the excerpt and **Save as source**. The clip is carried in the URL fragment (never sent to a server); emails/phones are removed by default. If the URL is already a source, the clip is appended and the source goes back to review.
 
+## Advocate summary (profile card + API)
+
+**Summary** tab: photo, name, profession, location, enrolment, a narrative built from the facts, office address, email, phone, profile links, firm/affiliations, roles, education, practice areas, publications and court-record statistics. Every item shows its status (verified/unverified/inferred) and source. Toggle *Include unverified leads*; **Copy text**, **JSON**, **Print / PDF**.
+
+* Photo: add a claim with field **Photo** (image URL), or accept a photo suggested by Auto-discover (an image on a page about the person whose caption/filename matches, or the page preview image). Loaded with `referrerPolicy="no-referrer"`; falls back to initials.
+* Contacts (email, phone) and **Office address** are *restricted* by default: only legal reviewers/admins see them. A reviewer can set a **verified** contact to *internal* or *public* with the visibility selector on the claim. Editors/viewers see "N restricted contact item(s) hidden".
+* Auto-discover now proposes emails, phones and office addresses found in text about the person, as restricted, unverified claims (masked for editors in the inbox). They are still stripped from stored page text and excerpts.
+
+API:
+* `POST /api/professional-intelligence/summary` with `{ "professionalId": "…", "includeUnverified": false, "workspace": <Export JSON> }` → summary JSON. On localhost the role comes from the workspace's current member; from other hosts the caller must be authenticated and only public contacts are returned.
+* `GET /api/professional-intelligence/professionals/<id>/summary?includeUnverified=1` → same summary from Supabase, contacts filtered by the caller's `pi_member_roles` role.
+
+## Settings → Integrations
+
+Header **Settings** (or **Add Firecrawl key** in the Auto-discover box): paste the Firecrawl key once. It is written to `.env.local` on this computer and applied immediately (no restart); only the last 4 characters are ever shown. The endpoint (`/api/professional-intelligence/settings`) accepts only same-origin requests to a localhost server.
+
 ## Database setup
 
 1. Review `supabase/migrations/20261012_professional_intelligence.sql`. It is additive (`pi_` prefix), creates no changes to existing tables, and depends on `organization_members` and `set_updated_at()` from the brand migration.
@@ -113,7 +129,7 @@ Seeded leads (all **unverified**; excerpts captured by an automated fetch and to
 ## Tests
 
 ```bash
-npm test          # 37 tests (domain rules, research workflow, CSV import, deletes, robots/extraction) (node --test, TypeScript via Node type stripping; Node ≥ 22.6)
+npm test          # 43 tests (domain rules, research workflow, CSV import, deletes, robots/extraction) (node --test, TypeScript via Node type stripping; Node ≥ 22.6)
 npm run typecheck
 npm run build
 ```

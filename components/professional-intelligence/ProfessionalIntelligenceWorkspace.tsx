@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { BarChart3, BookOpen, CalendarDays, Database, Download, Fingerprint, Gavel, LayoutDashboard, Lightbulb, RotateCcw, Search, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { BarChart3, BookOpen, CalendarDays, Database, Download, Fingerprint, Gavel, IdCard, LayoutDashboard, Lightbulb, RotateCcw, Search, Settings, Upload } from "lucide-react";
+import SettingsModal from "./SettingsModal";
+import SummaryTab from "./SummaryTab";
 import { blankWorkspace, seedWorkspace } from "@/lib/professional-intelligence/seed";
 import { buildResearchProfile, classifyUrl } from "@/lib/professional-intelligence/research";
 import { TIER_LABEL } from "@/lib/professional-intelligence/constants";
@@ -17,9 +19,10 @@ import PublicationsTab from "./PublicationsTab";
 import { button, download, field, label, Labeled, Modal, primary } from "./ui";
 import { parseWorkspace, TABS, type Tab, useWorkspace } from "./useWorkspace";
 
-const ICONS = [LayoutDashboard, Fingerprint, Database, Gavel, BookOpen, Lightbulb, CalendarDays, BarChart3];
+const ICONS = [LayoutDashboard, IdCard, Fingerprint, Database, Gavel, BookOpen, Lightbulb, CalendarDays, BarChart3];
 const INTRO: Record<Tab, string> = {
   "Overview": "Evidence-backed authority, at a glance.",
+  "Summary": "Profile card: photo, contacts, firm, practice and records — each with its source and status.",
   "Professional DNA": "Every fact linked to a source and a verification state.",
   "Evidence Registry": "Sources, tiers and verification history.",
   "Litigation Intelligence": "Court records — volume, status and reviewed outcomes kept separate.",
@@ -35,6 +38,9 @@ export default function ProfessionalIntelligenceWorkspace() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [researching, setResearching] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Other components (e.g. the Auto-discover setup box) open Settings via this event.
+  useEffect(() => { const open = () => setSettingsOpen(true); window.addEventListener("pi-open-settings", open); return () => window.removeEventListener("pi-open-settings", open); }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const actor = ws.members.find((m) => m.id === ws.currentUserId) ?? ws.members[0];
   const pid = ws.professionals.some((p) => p.id === ws.activeProfessionalId) ? ws.activeProfessionalId : ws.professionals[0]?.id ?? "";
@@ -69,6 +75,7 @@ export default function ProfessionalIntelligenceWorkspace() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div><p className="mb-1 text-xs font-semibold uppercase tracking-[.15em] text-slate-400">{professional ? `${professional.displayName}${professional.isExample ? " · example profile" : ""}` : "No profile selected"} · Professional authority intelligence</p><h1 className="text-3xl font-semibold tracking-tight">{pid ? tab : "Start your research"}</h1><p className="mt-1 text-sm text-slate-500">{pid ? INTRO[tab] : "Create a research profile for any professional."}</p></div>
           <div className="flex flex-wrap gap-2">
+            <button className={button} onClick={() => setSettingsOpen(true)}><Settings size={15} />Settings</button>
             <button className={button} onClick={() => setResetOpen(true)}><RotateCcw size={15} />Reset</button>
             <button className={button} onClick={() => fileRef.current?.click()}><Upload size={15} />Import</button>
             <input ref={fileRef} type="file" accept="application/json,.json" className="sr-only" aria-label="Import workspace JSON" onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; try { setWs(parseWorkspace(await file.text())); notify("Workspace imported."); } catch (err) { notify(err instanceof Error ? err.message : "Import failed.", "error"); } }} />
@@ -85,6 +92,7 @@ export default function ProfessionalIntelligenceWorkspace() {
           <div className="mt-6 flex flex-wrap justify-center gap-2"><button className={primary} onClick={() => setResearching(true)}><Search size={15} />Start new research</button><button className={button} onClick={() => { setWs(seedWorkspace()); notify("Example profile loaded."); }}>Load the example profile</button></div>
         </section> : <>
           {tab === "Overview" && <OverviewTab {...props} />}
+          {tab === "Summary" && <SummaryTab {...props} />}
           {tab === "Professional DNA" && <ProfileTab {...props} />}
           {tab === "Evidence Registry" && <EvidenceTab {...props} />}
           {tab === "Litigation Intelligence" && <LitigationTab {...props} />}
@@ -106,6 +114,7 @@ export default function ProfessionalIntelligenceWorkspace() {
         <button className={`${primary} !bg-red-700 hover:!bg-red-800`} onClick={() => { setWs(blankWorkspace()); setResetOpen(false); goTo("Overview"); notify("Workspace cleared. Start new research."); }}>Clear everything</button>
       </div>
     </Modal>}
+    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} notify={notify} />}
     {researching && <ResearchWizard onClose={() => setResearching(false)} onCreate={(input) => {
       try {
         const r = buildResearchProfile(input);

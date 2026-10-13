@@ -35,7 +35,7 @@ export interface SourceEvidence {
 export type ClaimField =
   | "canonical_name" | "alias" | "profession" | "location" | "bar_enrolment"
   | "affiliation" | "role" | "education" | "credential" | "practice_area"
-  | "publication" | "speaking" | "contact" | "profile_link";
+  | "publication" | "speaking" | "contact" | "office_address" | "photo" | "profile_link";
 export type ClaimStatus = "unverified" | "verified" | "disputed" | "rejected";
 export type Confidence = "low" | "medium" | "high";
 export type ClaimBasis = "stated" | "inferred";

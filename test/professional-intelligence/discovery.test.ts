@@ -34,13 +34,26 @@ test("match score rewards name + profession + location and explains itself", () 
   assert.ok(other.reasons.includes("Full name not found on the page"));
 });
 
-test("contacts are redacted and never become suggestions", () => {
+test("contacts become separate contact suggestions only; other suggestions and stored text stay redacted", () => {
   const r = redactContacts("Mail a@b.co or call +91 98765 43210 or 9876543210.");
   assert.equal(r.removed, 3);
   assert.doesNotMatch(r.text, /@|98765/);
   const { suggestions } = extractSuggestions(person, PAGE);
-  assert.ok(suggestions.every((s) => !/@|98765/.test(s.value + s.excerpt)));
-  assert.ok(!suggestions.some((s) => s.field === "contact"));
+  const contacts = suggestions.filter((s) => s.field === "contact");
+  assert.deepEqual(contacts.map((c) => [c.label, c.value]), [["Email", "priya@acme-legal.com"], ["Phone", "+91 98765 43210"]]);
+  assert.ok(suggestions.filter((s) => s.field !== "contact").every((s) => !/@|98765/.test(s.value + s.excerpt)));
+});
+
+test("office address and photo are proposed from text about the person", () => {
+  const page = { url: "https://firm.example/priya", title: "Priya Sharma | Firm", image: "https://firm.example/og.jpg",
+    text: "![Priya Sharma portrait](https://firm.example/img/priya-sharma.jpg)\nPriya Sharma, Advocate. Office: Chamber 12, Bombay High Court, Fort, Mumbai 400032 | Mobile: +91 98765 43210" };
+  const { suggestions } = extractSuggestions(person, page);
+  assert.equal(suggestions.find((s) => s.field === "photo")?.value, "https://firm.example/img/priya-sharma.jpg");
+  assert.equal(suggestions.find((s) => s.field === "office_address")?.value, "Chamber 12, Bombay High Court, Fort, Mumbai 400032");
+  const og = extractSuggestions(person, { ...page, text: "Priya Sharma, Advocate." });
+  assert.equal(og.suggestions.find((s) => s.field === "photo")?.value, "https://firm.example/og.jpg");
+  const other = extractSuggestions(person, { url: "https://x.example", title: "Directory", text: "![Rahul Mehta](https://x.example/rahul.jpg) Rahul Mehta. Office: 5 Main Road, Pune | Phone 02012345678" });
+  assert.ok(!other.suggestions.some((s) => ["photo", "office_address", "contact"].includes(s.field)), "nothing taken from another person's text");
 });
 
 test("suggestions are extracted with their evidence sentence", () => {

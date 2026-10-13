@@ -5,7 +5,7 @@ import type { Member, Workspace } from "@/types/professional-intelligence";
 import { WorkflowError } from "@/lib/professional-intelligence/evidence";
 import { blankWorkspace } from "@/lib/professional-intelligence/seed";
 
-export const TABS = ["Overview", "Professional DNA", "Evidence Registry", "Litigation Intelligence", "Publications", "Content Strategy", "Editorial Calendar", "Performance"] as const;
+export const TABS = ["Overview", "Summary", "Professional DNA", "Evidence Registry", "Litigation Intelligence", "Publications", "Content Strategy", "Editorial Calendar", "Performance"] as const;
 export type Tab = typeof TABS[number];
 
 const STORAGE_KEY = "scl-professional-intelligence-v1";

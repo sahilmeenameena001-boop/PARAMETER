@@ -3,7 +3,8 @@ import { classifyUrl } from "./research.ts";
 import { normalizeCategory, normalizeCnr } from "./litigation.ts";
 
 // Automatic discovery produces CANDIDATES only. Nothing becomes a source or claim until a person accepts it,
-// and accepted items are still unverified. Contact details (phones/emails) are never extracted.
+// and accepted items are still unverified. Contact details are proposed only as RESTRICTED claims (reviewers/admins)
+// and are stripped from stored page text and excerpts.
 
 export type DiscoveryDepth = "quick" | "standard" | "deep";
 export const DEPTH_QUERIES: Record<DiscoveryDepth, number> = { quick: 3, standard: 6, deep: 10 };
@@ -96,7 +97,7 @@ const PRACTICE_AREAS: [RegExp, string][] = [
  * Pulls suggested facts out of page text. Each suggestion carries the sentence it came from. Suggestions are only taken
  * from sentences that mention the person (or from pages that are clearly about them), to limit same-name confusion.
  */
-export function extractSuggestions(p: PersonContext, page: { title: string; text: string; url: string }): { suggestions: DiscoverySuggestion[]; cnrs: DiscoveredCase[] } {
+export function extractSuggestions(p: PersonContext, page: { title: string; text: string; url: string; image?: string }): { suggestions: DiscoverySuggestion[]; cnrs: DiscoveredCase[] } {
   const clean = redactContacts(page.text).text;
   const name = norm(p.name);
   const surname = name.split(" ").at(-1) ?? name;
@@ -132,6 +133,20 @@ export function extractSuggestions(p: PersonContext, page: { title: string; text
     const loc = relevant.find((s) => norm(s).includes(norm(p.location)));
     if (loc) add("location", p.location, loc);
   }
+  // Contact details, office address and photo — taken only from text about this person. They are proposed as
+  // RESTRICTED claims (reviewers/admins only) and are never put into the stored page text or excerpt.
+  const rawRelevant = sentences(page.text).filter((s) => titleAboutPerson || norm(s).includes(name) || (surname.length > 3 && norm(s).includes(surname)));
+  for (const s of rawRelevant) {
+    for (const e of s.match(EMAIL) ?? []) add("contact", e.toLowerCase(), s, "Email");
+    for (const ph of s.match(PHONE) ?? []) add("contact", ph.replace(/\s+/g, " ").trim(), s, "Phone");
+    const addr = s.match(/\b(?:office|chambers?|chamber no\.?|address|residence-cum-office)\s*(?:address)?\s*[:\-–]\s*([^|]{10,180}?)(?=\s*(?:\b(?:mob|mobile|phone|tel|email|e-mail|ph)\b|$))/i);
+    if (addr) add("office_address", addr[1].replace(/[\s,;]+$/, ""), s, "Office");
+  }
+  for (const m of page.text.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+\.(?:jpe?g|png|webp)(?:\?[^)\s]*)?)\)/gi)) {
+    const alt = norm(m[1]), file = m[2].toLowerCase();
+    if (alt.includes(name) || (surname.length > 3 && (alt.includes(surname) || file.includes(surname)))) { add("photo", m[2], `Image “${m[1] || "untitled"}” on ${page.url}`); break; }
+  }
+  if (page.image && titleAboutPerson && !out.some((x) => x.field === "photo")) add("photo", page.image, `Page preview image of ${page.url} (check it is a photo of this person)`);
   // CNRs: 4 letters + 12 digits (e.g. DLHC010248372023). Titles are taken from the same line when present.
   const cnrs: DiscoveredCase[] = [];
   // Party names exclude digits so a title never swallows a neighbouring CNR.
@@ -167,7 +182,7 @@ export function extractSuggestions(p: PersonContext, page: { title: string; text
   return { suggestions: out, cnrs: cnrs.slice(0, 50) };
 }
 
-export interface RawResult { url: string; title: string; description: string; text: string; query: string; scraped: boolean; note: string }
+export interface RawResult { url: string; title: string; description: string; text: string; query: string; scraped: boolean; note: string; image?: string }
 
 /** Turns raw search results into deduplicated, scored candidates. Results already registered as sources are skipped. */
 export function buildCandidates(p: PersonContext & { professionalId: string }, results: RawResult[], knownUrls: string[], now = new Date()): DiscoveryCandidate[] {
@@ -180,7 +195,7 @@ export function buildCandidates(p: PersonContext & { professionalId: string }, r
     seen.add(key);
     let c;
     try { c = classifyUrl(r.url); } catch { continue; }
-    const page = { title: r.title, text: `${r.description}\n${r.text}`, url: r.url };
+    const page = { title: r.title, text: `${r.description}\n${r.text}`, url: r.url, image: r.image };
     const { score, reasons } = matchScore(p, page);
     const { suggestions, cnrs } = extractSuggestions(p, page);
     const contactsSeen = redactContacts(page.text).removed;
@@ -214,7 +229,7 @@ export function acceptCandidate(ws: Workspace, candidateId: string, pick: { sugg
   };
   const claims: Claim[] = pick.suggestionIdx.map((i) => cand.suggestions[i]).filter(Boolean).map((s) => ({
     id: `cl-${crypto.randomUUID().slice(0, 8)}`, professionalId: cand.professionalId, field: s.field, value: s.value, label: s.label, effectiveFrom: null, effectiveTo: null,
-    basis: "stated", confidence: "low", status: "unverified", visibility: "internal", sourceIds: [source.id], reviewerId: null, verifiedAt: null, supersedesId: null,
+    basis: "stated", confidence: "low", status: "unverified", visibility: s.field === "contact" || s.field === "office_address" ? "restricted" : "internal", sourceIds: [source.id], reviewerId: null, verifiedAt: null, supersedesId: null,
     notes: `Auto-discovered. Evidence: “${s.excerpt}”`, createdAt: at, updatedAt: at,
   }));
   const known = new Set(ws.cases.filter((c) => c.professionalId === cand.professionalId).map((c) => normalizeCnr(c.cnr)));

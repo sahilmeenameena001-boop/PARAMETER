@@ -7,7 +7,7 @@ const LOGIN_WALLED = /(^|\.)(linkedin|facebook|instagram)\.com$/i;
 
 export class DiscoveryUnavailable extends Error {}
 
-interface FcItem { url?: string; title?: string; description?: string; markdown?: string; metadata?: { title?: string; description?: string; sourceURL?: string } }
+interface FcItem { url?: string; title?: string; description?: string; markdown?: string; metadata?: { title?: string; description?: string; sourceURL?: string; ogImage?: string; "og:image"?: string } }
 
 /** Accepts both the v2 shape ({ data: { web: [...] } }) and the v1 shape ({ data: [...] }). */
 export function parseFirecrawlSearch(json: unknown): FcItem[] {
@@ -57,7 +57,8 @@ export async function firecrawlSearch(query: string, opts: { limit: number; scra
       const robots = await robotsFor(u.origin);
       if (robots && !robotsAllows(robots, u.pathname + u.search)) { text = ""; note = "robots.txt disallows automated reading: only the search snippet is kept."; }
     }
-    out.push({ url, title, description, text: text.slice(0, 20_000), query, scraped: !!text, note });
+    const image = item.metadata?.ogImage ?? item.metadata?.["og:image"];
+    out.push({ url, title, description, text: text.slice(0, 20_000), query, scraped: !!text, note, image: typeof image === "string" && /^https?:\/\//.test(image) ? image : undefined });
   }
   return out;
 }
