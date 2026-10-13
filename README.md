@@ -116,3 +116,7 @@ Demo changes persist in this browser's local storage. This is a simulated worksp
 Evidence-backed professional profiles, litigation intelligence, publications and a content workflow with a mandatory legal-review gate. Open `http://localhost:3000/dashboard/professional-intelligence` (local workspace — click **New research** to profile any professional; an Amish Tandon example can be loaded from the empty state or via Reset).
 
 Database: `supabase/migrations/20261012_professional_intelligence.sql` (additive, `pi_` tables). Run `npm test` for the domain tests. Full documentation: `docs/PROFESSIONAL_INTELLIGENCE.md`.
+
+## API keys (encrypted in the repo)
+
+Keys are stored encrypted in `secrets/env.enc`. After cloning: `npm install`, then `npm run unlock` (enter the team password — ask the project owner), then `npm run build && npm start`. To change a key: update it in the app's **Settings** (or `.env.local`), run `npm run secrets:lock`, commit `secrets/env.enc`. Details: `secrets/README.md`.
