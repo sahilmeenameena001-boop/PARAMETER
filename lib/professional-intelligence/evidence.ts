@@ -79,10 +79,7 @@ export function verifyClaim(
   if (TIER_A_REQUIRED.includes(claim.field) && tier !== "A") {
     throw new WorkflowError(`${CLAIM_FIELD_LABEL[claim.field]} can only be verified against an official (Tier A) record.`);
   }
-  const cap = maxConfidenceForTier(tier);
-  if (CONFIDENCE_RANK[ctx.confidence] > CONFIDENCE_RANK[cap]) {
-    throw new WorkflowError(`Tier ${tier} evidence supports at most "${cap}" confidence.`);
-  }
+  // Confidence is the reviewer's own score; maxConfidenceForTier() is only a suggestion shown in the UI.
   const supersede = ctx.supersedeIds ?? [];
   if (SINGLE_VALUE_FIELDS.includes(claim.field)) {
     const rivals = ctx.claims.filter((c) => c.id !== claim.id && live(c) && c.professionalId === claim.professionalId && c.field === claim.field && norm(c.value) !== norm(claim.value));
@@ -101,12 +98,22 @@ export function verifyClaim(
   };
 }
 
-export function verifySource(source: SourceEvidence, actor: Member, method: string, now = new Date()): SourceEvidence {
+export const SELF_CHECKED_METHOD = "Reviewer opened the source personally and confirmed it is authentic, current and matches the excerpt.";
+
+/** `selfChecked` = the reviewer ticked the personal-check confirmation; the written method is then optional. */
+export function verifySource(source: SourceEvidence, actor: Member, method: string, now = new Date(), selfChecked = false): SourceEvidence {
   if (!canReview(actor)) throw new WorkflowError("Only a legal reviewer or admin can verify sources.");
-  if (!method.trim()) throw new WorkflowError("Record how the source was verified (e.g. 'Opened official PDF, matched row 273').");
+  if (!method.trim() && !selfChecked) throw new WorkflowError("Record how the source was verified (e.g. 'Opened official PDF, matched row 273').");
   if (source.status === "inaccessible") throw new WorkflowError("This source is marked inaccessible. Attach the evidence or re-open it before verifying.");
   const at = now.toISOString();
-  return { ...source, status: "verified", verificationMethod: method.trim(), reviewerId: actor.id, reviewedAt: at, accessedAt: source.accessedAt ?? at, updatedAt: at };
+  return { ...source, status: "verified", verificationMethod: method.trim() || SELF_CHECKED_METHOD, reviewerId: actor.id, reviewedAt: at, accessedAt: source.accessedAt ?? at, updatedAt: at };
+}
+
+/** Manual confidence score set by a reviewer, on unverified or verified claims. */
+export function setClaimConfidence(claim: Claim, actor: Member, confidence: Confidence, now = new Date()): Claim {
+  if (!canReview(actor)) throw new WorkflowError("Only a legal reviewer or admin can score claim confidence.");
+  if (claim.status === "rejected") throw new WorkflowError("Rejected claims cannot be re-scored.");
+  return { ...claim, confidence, updatedAt: now.toISOString() };
 }
 
 const COMPLETENESS_FIELDS: ClaimField[] = ["canonical_name", "profession", "location", "bar_enrolment", "affiliation", "education", "practice_area", "publication", "profile_link", "contact"];

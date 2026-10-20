@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Claim, ContentIdea, CourtCase, CourtOrder, Member, SourceEvidence } from "../../types/professional-intelligence.ts";
-import { addClaim, effectiveSourceStatus, findConflicts, verifyClaim, verifySource } from "../../lib/professional-intelligence/evidence.ts";
+import { addClaim, effectiveSourceStatus, findConflicts, setClaimConfidence, verifyClaim, verifySource } from "../../lib/professional-intelligence/evidence.ts";
 import { caseOutcome, elapsedCaseDays, findDuplicateCases, normalizeCategory, reviewOrderOutcome, summarizeLitigation } from "../../lib/professional-intelligence/litigation.ts";
 import { complianceIssues, exportMarkdown, generateBrief, reviseContent, transitionBlockers, transitionContent } from "../../lib/professional-intelligence/content.ts";
 import { scoreTotal, setScoreComponent, suggestEvidenceScore } from "../../lib/professional-intelligence/scoring.ts";
@@ -24,7 +24,7 @@ test("claims cannot be verified without a verified source", () => {
   assert.throws(() => verifyClaim(c, { claims: [c], sources: [source("s1")], actor: reviewer, confidence: "low", now: NOW }), /verified, current source/);
 });
 
-test("only reviewers verify; tier caps confidence; enrolment needs Tier A", () => {
+test("only reviewers verify; confidence is the reviewer's own score; enrolment needs Tier A", () => {
   const sB = source("sB", { tier: "B", status: "verified", accessedAt: NOW.toISOString() });
   const c = claimOf({ id: "c1", field: "profession", sourceIds: ["sB"] });
   assert.throws(() => verifyClaim(c, { claims: [c], sources: [sB], actor: editor, confidence: "low", now: NOW }), /legal reviewer/);
@@ -32,7 +32,9 @@ test("only reviewers verify; tier caps confidence; enrolment needs Tier A", () =
   assert.equal(ok.claim.status, "verified");
   const sD = source("sD", { tier: "D", status: "verified", accessedAt: NOW.toISOString() });
   const c2 = claimOf({ id: "c2", field: "practice_area", sourceIds: ["sD"] });
-  assert.throws(() => verifyClaim(c2, { claims: [c2], sources: [sD], actor: reviewer, confidence: "high", now: NOW }), /at most "low"/);
+  assert.equal(verifyClaim(c2, { claims: [c2], sources: [sD], actor: reviewer, confidence: "high", now: NOW }).claim.confidence, "high");
+  assert.equal(setClaimConfidence(ok.claim, reviewer, "low", NOW).confidence, "low");
+  assert.throws(() => setClaimConfidence(ok.claim, editor, "low", NOW), /legal reviewer/);
   const c3 = claimOf({ id: "c3", field: "bar_enrolment", sourceIds: ["sB"] });
   assert.throws(() => verifyClaim(c3, { claims: [c3], sources: [sB], actor: reviewer, confidence: "low", now: NOW }), /Tier A/);
 });
@@ -66,6 +68,10 @@ test("old verified sources are shown as stale; source verification records metho
   assert.throws(() => verifySource(source("s"), reviewer, " "), /how the source was verified/);
   assert.throws(() => verifySource(source("s"), editor, "checked"), /legal reviewer/);
   assert.equal(verifySource(source("s"), reviewer, "Opened official PDF", NOW).status, "verified");
+  // Ticking the personal-check confirmation makes the written method optional.
+  const self = verifySource(source("s"), reviewer, "", NOW, true);
+  assert.equal(self.status, "verified");
+  assert.ok(self.verificationMethod);
 });
 
 test("restricted contacts are redacted for non-reviewers", () => {

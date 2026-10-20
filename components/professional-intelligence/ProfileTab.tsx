@@ -7,7 +7,7 @@ import { canEdit, canReview, isContactField, redactClaim } from "@/lib/professio
 import { CLAIM_FIELD_LABEL, TIER_A_REQUIRED } from "@/lib/professional-intelligence/constants";
 import { searchLinks } from "@/lib/professional-intelligence/research";
 import { deleteClaim, deleteProfessional } from "@/lib/professional-intelligence/workspace-ops";
-import { addClaim, bestVerifiedTier, dataQualityWarnings, findConflicts, maxConfidenceForTier, verifyClaim } from "@/lib/professional-intelligence/evidence";
+import { addClaim, bestVerifiedTier, dataQualityWarnings, findConflicts, maxConfidenceForTier, setClaimConfidence, verifyClaim } from "@/lib/professional-intelligence/evidence";
 import { Badge, button, card, Confirm, Empty, field, fmtDate, Labeled, Modal, MultiSelect, newId, nowIso, primary, SectionTitle, SourceLinks, StatusBadge, TierBadge } from "./ui";
 import { attempt, type TabProps } from "./useWorkspace";
 import DiscoveryPanel from "./DiscoveryPanel";
@@ -81,7 +81,11 @@ export default function ProfileTab(props: TabProps) {
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{CLAIM_FIELD_LABEL[c.field]}{c.label ? ` · ${c.label}` : ""}</span>
                 <StatusBadge status={c.status} />
                 <Badge tone={c.basis === "inferred" ? "bg-violet-50 text-violet-800 ring-violet-200" : undefined}>{c.basis === "inferred" ? "Inferred" : "Stated in source"}</Badge>
-                <Badge>Confidence: {c.confidence}</Badge>
+                {canReview(actor) && c.status !== "rejected" && !c.redacted
+                  ? <select aria-label={`Confidence of ${c.value}`} title="Your confidence score" className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px]" value={c.confidence} onChange={(e) => { const next = attempt(notify, () => setClaimConfidence(ws.claims.find((x) => x.id === c.id)!, actor, e.target.value as Confidence)); if (next) run("Scored claim confidence", (w) => ({ ...w, claims: w.claims.map((x) => (x.id === c.id ? next : x)) }), { entity: "claim", id: c.id }); }}>
+                      {["low", "medium", "high"].map((v) => <option key={v} value={v}>Confidence: {v}</option>)}
+                    </select>
+                  : <Badge>Confidence: {c.confidence}</Badge>}
                 {isContactField(c.field) && (canReview(actor) && !c.redacted
                   ? <select aria-label={`Visibility of ${c.value}`} className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px]" value={c.visibility} onChange={(e) => run("Changed contact visibility", (w) => ({ ...w, claims: w.claims.map((x) => (x.id === c.id ? { ...x, visibility: e.target.value as Visibility, updatedAt: nowIso() } : x)) }), { entity: "claim", id: c.id })}>
                       <option value="restricted">restricted</option><option value="internal">internal</option><option value="public" disabled={c.status !== "verified"}>public{c.status !== "verified" ? " (verify first)" : ""}</option>
@@ -160,8 +164,8 @@ function AddClaim({ ws, pid, run, notify, onClose, initial }: Pick<TabProps, "ws
 
 function VerifyClaim({ claim, ws, actor, run, notify, onClose }: Pick<TabProps, "ws" | "actor" | "run" | "notify"> & { claim: Claim; onClose: () => void }) {
   const tier = bestVerifiedTier(claim.sourceIds, ws.sources);
-  const cap = tier ? maxConfidenceForTier(tier) : "low";
-  const [confidence, setConfidence] = useState<Confidence>(cap);
+  const suggested = tier ? maxConfidenceForTier(tier) : "low";
+  const [confidence, setConfidence] = useState<Confidence>(claim.confidence);
   const rivals = ws.claims.filter((c) => c.id !== claim.id && c.professionalId === claim.professionalId && c.field === claim.field && c.status === "verified" && c.value !== claim.value);
   const [supersede, setSupersede] = useState<string[]>([]);
   function submit() {
@@ -175,7 +179,7 @@ function VerifyClaim({ claim, ws, actor, run, notify, onClose }: Pick<TabProps, 
     <p className="mt-1 text-xs text-slate-500">{CLAIM_FIELD_LABEL[claim.field]}{TIER_A_REQUIRED.includes(claim.field) ? " · requires an official Tier A record" : ""}</p>
     <div className="my-4"><SourceLinks ids={claim.sourceIds} sources={ws.sources} /></div>
     {!tier && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">No linked source is verified yet. Verify the source in the Evidence Registry first.</p>}
-    <Labeled text={`Confidence (Tier ${tier ?? "–"} evidence allows up to "${cap}")`}><select className={field} value={confidence} onChange={(e) => setConfidence(e.target.value as Confidence)}>{["low", "medium", "high"].map((c) => <option key={c}>{c}</option>)}</select></Labeled>
+    <Labeled text={`Confidence — your score (Tier ${tier ?? "–"} evidence typically supports up to "${suggested}")`}><select className={field} value={confidence} onChange={(e) => setConfidence(e.target.value as Confidence)}>{["low", "medium", "high"].map((c) => <option key={c}>{c}</option>)}</select></Labeled>
     {rivals.length > 0 && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm"><p className="font-medium text-red-800">A different verified value exists. Supersede it explicitly:</p>{rivals.map((r) => <label key={r.id} className="mt-2 flex gap-2"><input type="checkbox" checked={supersede.includes(r.id)} onChange={(e) => setSupersede(e.target.checked ? [...supersede, r.id] : supersede.filter((x) => x !== r.id))} />“{r.value}” ({r.confidence})</label>)}</div>}
     <div className="mt-6 flex justify-end gap-2"><button className={button} onClick={onClose}>Cancel</button><button className={primary} onClick={submit}><ShieldCheck size={15} />Verify</button></div>
   </Modal>;

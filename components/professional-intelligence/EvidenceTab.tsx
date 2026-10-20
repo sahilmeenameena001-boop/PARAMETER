@@ -151,10 +151,10 @@ function VerifySourceDialog({ source, actor, run, notify, onClose }: Pick<TabPro
   return <Modal title="Verify source" onClose={onClose}>
     <p className="font-medium">{source.title}</p>
     <a className="mt-1 block break-all text-xs underline" href={source.url} target="_blank" rel="noopener noreferrer">{source.url}</a>
-    <Labeled text="Verification method" className="mt-4"><textarea className={field} rows={3} value={method} onChange={(e) => setMethod(e.target.value)} placeholder="e.g. Opened the PDF from the official Delhi HC site navigation, matched row 273 and the column heading 'Enrolment No.'" /></Labeled>
+    <Labeled text="Verification method (optional once you tick the box below)" className="mt-4"><textarea className={field} rows={3} value={method} onChange={(e) => setMethod(e.target.value)} placeholder="e.g. Opened the PDF from the official Delhi HC site navigation, matched row 273 and the column heading 'Enrolment No.'" /></Labeled>
     <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={authentic} onChange={(e) => setAuthentic(e.target.checked)} />I opened the source myself, confirmed it is authentic and current, and the excerpt matches.</label>
     <div className="mt-6 flex justify-end gap-2"><button className={button} onClick={onClose}>Cancel</button><button className={primary} disabled={!authentic} onClick={() => {
-      const next = attempt(notify, () => verifySource(source, actor, method));
+      const next = attempt(notify, () => verifySource(source, actor, method, undefined, authentic));
       if (!next) return;
       run("Verified source", (w) => ({ ...w, sources: w.sources.map((s) => (s.id === source.id ? { ...next, accessedAt: nowIso() } : s)) }), { entity: "source", id: source.id });
       notify("Source verified."); onClose();
