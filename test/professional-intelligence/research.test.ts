@@ -34,7 +34,8 @@ test("search links are encoded public URLs for the given name", () => {
   const links = searchLinks("Priya Sharma", "Bombay High Court");
   assert.ok(links.length >= 5);
   assert.ok(links.every((l) => l.url.startsWith("https://")));
-  assert.ok(links[0].url.includes(encodeURIComponent('"Priya Sharma" Bombay High Court')));
+  assert.ok(links[0].url.includes(encodeURIComponent('Advocate "Priya Sharma" Bombay High Court')));
+  assert.ok(searchLinks("Priya Sharma", "", "Chartered Accountant")[0].url.includes(encodeURIComponent('Chartered Accountant "Priya Sharma"')));
 });
 
 test("starter ideas come from practice areas and publications, start as research_needed, no duplicates", () => {

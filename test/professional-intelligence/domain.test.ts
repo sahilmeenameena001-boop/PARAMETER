@@ -19,12 +19,14 @@ const source = (id: string, patch: Partial<SourceEvidence> = {}): SourceEvidence
 const claimOf = (patch: Partial<Claim>): Claim => ({ ...ws().claims[0], ...patch });
 
 // ---------- sources & claims ----------
-test("claims cannot be verified without a verified source", () => {
+test("a reviewer can verify a claim without a verified source", () => {
   const c = claimOf({ id: "c1", sourceIds: ["s1"] });
-  assert.throws(() => verifyClaim(c, { claims: [c], sources: [source("s1")], actor: reviewer, confidence: "low", now: NOW }), /verified, current source/);
+  assert.equal(verifyClaim(c, { claims: [c], sources: [source("s1")], actor: reviewer, confidence: "low", now: NOW }).claim.status, "verified");
+  const bare = claimOf({ id: "c0", sourceIds: [] });
+  assert.equal(verifyClaim(bare, { claims: [bare], sources: [], actor: reviewer, confidence: "medium", now: NOW }).claim.status, "verified");
 });
 
-test("only reviewers verify; confidence is the reviewer's own score; enrolment needs Tier A", () => {
+test("only reviewers verify; confidence is the reviewer's own score; no Tier A requirement", () => {
   const sB = source("sB", { tier: "B", status: "verified", accessedAt: NOW.toISOString() });
   const c = claimOf({ id: "c1", field: "profession", sourceIds: ["sB"] });
   assert.throws(() => verifyClaim(c, { claims: [c], sources: [sB], actor: editor, confidence: "low", now: NOW }), /legal reviewer/);
@@ -36,7 +38,7 @@ test("only reviewers verify; confidence is the reviewer's own score; enrolment n
   assert.equal(setClaimConfidence(ok.claim, reviewer, "low", NOW).confidence, "low");
   assert.throws(() => setClaimConfidence(ok.claim, editor, "low", NOW), /legal reviewer/);
   const c3 = claimOf({ id: "c3", field: "bar_enrolment", sourceIds: ["sB"] });
-  assert.throws(() => verifyClaim(c3, { claims: [c3], sources: [sB], actor: reviewer, confidence: "low", now: NOW }), /Tier A/);
+  assert.equal(verifyClaim(c3, { claims: [c3], sources: [sB], actor: reviewer, confidence: "low", now: NOW }).claim.status, "verified");
 });
 
 test("a verified claim is never overwritten by a conflicting claim", () => {
@@ -48,11 +50,11 @@ test("a verified claim is never overwritten by a conflicting claim", () => {
   assert.equal(claims.find((c) => c.id === "n1")!.status, "disputed");
   assert.equal(conflicts.length, 1);
   assert.equal(findConflicts(claims).length, 1);
-  // Verifying the rival requires explicit supersede and cannot lower confidence.
+  // Verifying the rival requires an explicit supersede (at any confidence).
   const sA = source("sA", { tier: "A", status: "verified", accessedAt: NOW.toISOString() });
   const rival = { ...claims.find((c) => c.id === "n1")!, sourceIds: ["sA"] };
   assert.throws(() => verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "high", now: NOW }), /supersede/);
-  assert.throws(() => verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "medium", now: NOW, supersedeIds: ["v1"] }), /lower-confidence/);
+  assert.equal(verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "low", now: NOW, supersedeIds: ["v1"] }).claim.status, "verified");
 });
 
 test("same-value claims merge evidence without changing status", () => {

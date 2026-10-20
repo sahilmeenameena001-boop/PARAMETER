@@ -94,18 +94,20 @@ export function buildResearchProfile(input: ResearchInput, now = new Date()) {
 }
 
 /** Public search pages a researcher can open themselves. Nothing is fetched automatically. */
-export function searchLinks(name: string, extra = "") {
+/** General web searches are prefixed with the profession ("Advocate" by default) to avoid same-name results. */
+export function searchLinks(name: string, extra = "", profession = "") {
   const q = (s: string) => encodeURIComponent(s);
   const quoted = `"${name.trim()}"`;
+  const titled = `${profession.trim() || "Advocate"} ${quoted}`;
   const ctx = extra.trim() ? ` ${extra.trim()}` : "";
   return [
-    { label: "Google", url: `https://www.google.com/search?q=${q(quoted + ctx)}` },
-    { label: "LinkedIn (via Google)", url: `https://www.google.com/search?q=${q(`site:linkedin.com/in ${quoted}${ctx}`)}` },
+    { label: "Google", url: `https://www.google.com/search?q=${q(titled + ctx)}` },
+    { label: "LinkedIn (via Google)", url: `https://www.google.com/search?q=${q(`site:linkedin.com/in ${titled}${ctx}`)}` },
     { label: "eCourtsIndia lawyer search", url: `https://www.google.com/search?q=${q(`site:ecourtsindia.com/lawyer ${quoted}`)}` },
     { label: "Indian Kanoon (judgments mentioning)", url: `https://indiankanoon.org/search/?formInput=${q(quoted)}` },
     { label: "Official court sites (gov.in / nic.in)", url: `https://www.google.com/search?q=${q(`${quoted} (site:nic.in OR site:gov.in)`)}` },
     { label: "Books & publications", url: `https://www.google.com/search?tbm=bks&q=${q(`inauthor:${quoted}`)}` },
-    { label: "News", url: `https://www.google.com/search?tbm=nws&q=${q(quoted + ctx)}` },
+    { label: "News", url: `https://www.google.com/search?tbm=nws&q=${q(titled + ctx)}` },
   ];
 }
 

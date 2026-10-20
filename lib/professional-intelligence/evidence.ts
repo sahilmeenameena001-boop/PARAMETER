@@ -1,9 +1,8 @@
 import type { Claim, ClaimField, Confidence, Member, SourceEvidence, SourceStatus, SourceTier } from "@/types/professional-intelligence";
 import { canReview } from "./access.ts";
-import { CLAIM_FIELD_LABEL, SINGLE_VALUE_FIELDS, STALE_AFTER_DAYS, TIER_A_REQUIRED } from "./constants.ts";
+import { CLAIM_FIELD_LABEL, SINGLE_VALUE_FIELDS, STALE_AFTER_DAYS } from "./constants.ts";
 
 const DAY = 86_400_000;
-const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
 const TIER_RANK: Record<SourceTier, number> = { A: 3, B: 2, C: 1, D: 0 };
 
 export class WorkflowError extends Error {
@@ -74,22 +73,12 @@ export function verifyClaim(
   const now = ctx.now ?? new Date();
   if (!canReview(ctx.actor)) throw new WorkflowError("Only a legal reviewer or admin can verify claims.");
   if (claim.status === "rejected") throw new WorkflowError("Rejected claims cannot be verified. Add a new claim instead.");
-  const tier = bestVerifiedTier(claim.sourceIds, ctx.sources, now);
-  if (!tier) throw new WorkflowError("Link at least one verified, current source before verifying this claim.");
-  if (TIER_A_REQUIRED.includes(claim.field) && tier !== "A") {
-    throw new WorkflowError(`${CLAIM_FIELD_LABEL[claim.field]} can only be verified against an official (Tier A) record.`);
-  }
-  // Confidence is the reviewer's own score; maxConfidenceForTier() is only a suggestion shown in the UI.
+  // The reviewer's own check is enough: no verified source, Tier A record or tier-based confidence cap is required.
   const supersede = ctx.supersedeIds ?? [];
   if (SINGLE_VALUE_FIELDS.includes(claim.field)) {
     const rivals = ctx.claims.filter((c) => c.id !== claim.id && live(c) && c.professionalId === claim.professionalId && c.field === claim.field && norm(c.value) !== norm(claim.value));
     const blocking = rivals.filter((c) => c.status === "verified" && !supersede.includes(c.id));
     if (blocking.length) throw new WorkflowError("Another verified value exists. Explicitly supersede it (reviewer decision) before verifying this one.");
-    for (const r of rivals.filter((c) => supersede.includes(c.id))) {
-      if (CONFIDENCE_RANK[ctx.confidence] < CONFIDENCE_RANK[r.confidence]) {
-        throw new WorkflowError("A lower-confidence claim cannot supersede a verified higher-confidence claim.");
-      }
-    }
   }
   const at = now.toISOString();
   return {

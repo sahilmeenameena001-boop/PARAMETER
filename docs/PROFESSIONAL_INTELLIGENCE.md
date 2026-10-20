@@ -36,8 +36,8 @@ test/professional-intelligence/domain.test.ts
 
 ## Rules enforced (UI, API and database)
 
-* **Provenance.** Every profile fact is a claim linked to source records. A claim can be verified only by a legal reviewer/admin and only with at least one *verified, current* source. Confidence (low/medium/high) is the reviewer's own score, settable on any claim from the claim card; the tier only suggests a level (A/B → high, C → medium, D → low). Bar enrolment and appointments require a Tier A source.
-* **No silent overwrites.** A conflicting value is stored next to the existing one as *disputed*. Replacing a verified value requires an explicit reviewer supersede at equal or higher confidence. In the database, verified claim values are immutable.
+* **Provenance.** Every profile fact is a claim linked to source records. A claim can be verified only by a legal reviewer/admin, on their own check: a verified source is not required, and a Tier A record is recommended (not required) for bar enrolment and appointments. Confidence (low/medium/high) is the reviewer's own score, settable on any claim from the claim card; the tier only suggests a level (A/B → high, C → medium, D → low).
+* **No silent overwrites.** A conflicting value is stored next to the existing one as *disputed*. Replacing a verified value requires an explicit reviewer supersede. In the database, verified claim values are immutable.
 * **Staleness.** Verified sources not re-accessed for 180 days are displayed as stale and stop counting as verified for approval.
 * **Court outcomes.** `disposed` is a status, never an outcome. An outcome exists only after a reviewer classifies a final order **with extracted/entered text**, quoting a verbatim operative excerpt and a rationale. Procedural results (withdrawn, infructuous, …) cannot be labelled merits. No win rate is computed anywhere.
 * **Counts are derived.** All totals come from stored records. Exact duplicates (same normalised CNR, or same case number + court) are counted once; same-party/different-CNR records are flagged "possibly related" and not merged. Interim applications are counted separately from underlying matters.
@@ -107,7 +107,7 @@ Everything is editable: professional details, claims (verified values are locked
 
 `PI_SOURCE_FETCH=off` disables Fetch details. The fetch route is open only to requests addressed to a localhost server; any other host requires an authenticated user.
 
-Database: insert into `pi_professionals`, then `pi_source_evidence`, `pi_claims` + `pi_claim_evidence`, etc. Insert claims as `unverified` and verify via update after evidence is linked (the trigger rejects inserting already-verified claims).
+Database: insert into `pi_professionals`, then `pi_source_evidence`, `pi_claims` + `pi_claim_evidence`, etc. Claims can be inserted or updated as `verified` only with a reviewer/admin `reviewer_id`.
 
 ## Source verification workflow
 

@@ -63,7 +63,7 @@ export default function ProfileTab(props: TabProps) {
 
     <section className={card}>
       <SectionTitle title="Research links" action={<input aria-label="Extra search context" className={`${field} !w-64 !py-1.5 text-xs`} placeholder="Add context, e.g. Delhi High Court" value={searchContext} onChange={(e) => setSearchContext(e.target.value)} />}>Open these public searches yourself, then add what you find as a source (Evidence Registry → Add source → Fetch details) and link claims to it.</SectionTitle>
-      <div className="flex flex-wrap gap-2">{searchLinks(professional.displayName, searchContext).map((l) => <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" className={`${button} !py-1.5 text-xs`}><Search size={13} />{l.label}<ExternalLink size={11} /></a>)}</div>
+      <div className="flex flex-wrap gap-2">{searchLinks(professional.displayName, searchContext, professional.profession).map((l) => <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" className={`${button} !py-1.5 text-xs`}><Search size={13} />{l.label}<ExternalLink size={11} /></a>)}</div>
     </section>
 
     {warnings.some((w) => w.level === "warning") && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><p className="font-semibold">Data-quality warnings</p><ul className="mt-2 list-disc space-y-1 pl-5">{warnings.filter((w) => w.level === "warning").map((w, i) => <li key={i}>{w.message}</li>)}</ul></section>}
@@ -176,9 +176,9 @@ function VerifyClaim({ claim, ws, actor, run, notify, onClose }: Pick<TabProps, 
   }
   return <Modal title="Verify claim" onClose={onClose}>
     <p className="font-medium">{claim.value}</p>
-    <p className="mt-1 text-xs text-slate-500">{CLAIM_FIELD_LABEL[claim.field]}{TIER_A_REQUIRED.includes(claim.field) ? " · requires an official Tier A record" : ""}</p>
+    <p className="mt-1 text-xs text-slate-500">{CLAIM_FIELD_LABEL[claim.field]}{TIER_A_REQUIRED.includes(claim.field) ? " · an official Tier A record is recommended" : ""}</p>
     <div className="my-4"><SourceLinks ids={claim.sourceIds} sources={ws.sources} /></div>
-    {!tier && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">No linked source is verified yet. Verify the source in the Evidence Registry first.</p>}
+    {!tier && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">No linked source is verified yet. You can still verify this claim on your own check.</p>}
     <Labeled text={`Confidence — your score (Tier ${tier ?? "–"} evidence typically supports up to "${suggested}")`}><select className={field} value={confidence} onChange={(e) => setConfidence(e.target.value as Confidence)}>{["low", "medium", "high"].map((c) => <option key={c}>{c}</option>)}</select></Labeled>
     {rivals.length > 0 && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm"><p className="font-medium text-red-800">A different verified value exists. Supersede it explicitly:</p>{rivals.map((r) => <label key={r.id} className="mt-2 flex gap-2"><input type="checkbox" checked={supersede.includes(r.id)} onChange={(e) => setSupersede(e.target.checked ? [...supersede, r.id] : supersede.filter((x) => x !== r.id))} />“{r.value}” ({r.confidence})</label>)}</div>}
     <div className="mt-6 flex justify-end gap-2"><button className={button} onClick={onClose}>Cancel</button><button className={primary} onClick={submit}><ShieldCheck size={15} />Verify</button></div>

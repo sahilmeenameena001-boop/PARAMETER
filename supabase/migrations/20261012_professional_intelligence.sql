@@ -210,9 +210,6 @@ declare v_org uuid := pi_org_of_professional(new.professional_id);
 begin
   if new.status = 'verified' and (tg_op = 'INSERT' or old.status is distinct from 'verified' or old.value is distinct from new.value) then
     if not pi_is_reviewer(v_org, new.reviewer_id) then raise exception 'Only a legal reviewer or admin can verify claims'; end if;
-    if tg_op = 'INSERT' or not exists (select 1 from pi_claim_evidence ce join pi_source_evidence s on s.id = ce.source_id where ce.claim_id = new.id and s.status = 'verified') then
-      raise exception 'A claim needs at least one verified source before it can be verified';
-    end if;
   end if;
   if tg_op = 'UPDATE' and old.status = 'verified' and new.value is distinct from old.value then
     raise exception 'Verified claim values are immutable. Add a new claim and supersede explicitly.';
