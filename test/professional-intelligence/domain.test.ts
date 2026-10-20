@@ -50,11 +50,13 @@ test("a verified claim is never overwritten by a conflicting claim", () => {
   assert.equal(claims.find((c) => c.id === "n1")!.status, "disputed");
   assert.equal(conflicts.length, 1);
   assert.equal(findConflicts(claims).length, 1);
-  // Verifying the rival requires an explicit supersede (at any confidence).
+  // Verifying the rival automatically supersedes the old verified value (at any confidence).
   const sA = source("sA", { tier: "A", status: "verified", accessedAt: NOW.toISOString() });
   const rival = { ...claims.find((c) => c.id === "n1")!, sourceIds: ["sA"] };
-  assert.throws(() => verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "high", now: NOW }), /supersede/);
-  assert.equal(verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "low", now: NOW, supersedeIds: ["v1"] }).claim.status, "verified");
+  const replaced = verifyClaim(rival, { claims, sources: [sA], actor: reviewer, confidence: "low", now: NOW });
+  assert.equal(replaced.claim.status, "verified");
+  assert.deepEqual(replaced.superseded, ["v1"]);
+  assert.equal(replaced.claim.supersedesId, "v1");
 });
 
 test("same-value claims merge evidence without changing status", () => {

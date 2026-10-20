@@ -37,7 +37,7 @@ test/professional-intelligence/domain.test.ts
 ## Rules enforced (UI, API and database)
 
 * **Provenance.** Every profile fact is a claim linked to source records. A claim can be verified only by a legal reviewer/admin, on their own check: a verified source is not required, and a Tier A record is recommended (not required) for bar enrolment and appointments. Confidence (low/medium/high) is the reviewer's own score, settable on any claim from the claim card; the tier only suggests a level (A/B → high, C → medium, D → low).
-* **No silent overwrites.** A conflicting value is stored next to the existing one as *disputed*. Replacing a verified value requires an explicit reviewer supersede. In the database, verified claim values are immutable.
+* **No silent overwrites.** A conflicting value is stored next to the existing one as *disputed*. Verifying a different value on a single-value field automatically supersedes the old verified value, which is kept as *rejected* for audit. In the database, verified claim values are immutable.
 * **Staleness.** Verified sources not re-accessed for 180 days are displayed as stale and stop counting as verified for approval.
 * **Court outcomes.** `disposed` is a status, never an outcome. An outcome exists only after a reviewer classifies a final order **with extracted/entered text**, quoting a verbatim operative excerpt and a rationale. Procedural results (withdrawn, infructuous, …) cannot be labelled merits. No win rate is computed anywhere.
 * **Counts are derived.** All totals come from stored records. Exact duplicates (same normalised CNR, or same case number + court) are counted once; same-party/different-CNR records are flagged "possibly related" and not merged. Interim applications are counted separately from underlying matters.
@@ -103,7 +103,7 @@ The Amish Tandon profile is only an optional example. A fresh browser starts wit
 5. **Litigation → Import CSV** (template provided) or Add case; open a case to add orders and classify outcomes.
 6. **Content Strategy → Starter ideas** creates research-needed ideas from the person's practice-area claims and publications.
 
-Everything is editable: professional details, claims (verified values are locked — add a new claim and supersede), sources (editing URL/excerpt/type of a verified source resets it to unreviewed), cases, orders (changing order text clears the outcome classification), publications, pillars and ideas. Deletes ask for confirmation; deleting a professional requires typing their name and removes all their records (sources used only by them too). **Reset** offers *Clear everything* or *Reset to example*. Switch people with the selector in the header.
+Everything is editable: professional details, claims (verified values are locked — add a new claim and verify it to replace the old one), sources (editing URL/excerpt/type of a verified source resets it to unreviewed), cases, orders (changing order text clears the outcome classification), publications, pillars and ideas. Deletes ask for confirmation; deleting a professional requires typing their name and removes all their records (sources used only by them too). **Reset** offers *Clear everything* or *Reset to example*. Switch people with the selector in the header.
 
 `PI_SOURCE_FETCH=off` disables Fetch details. The fetch route is open only to requests addressed to a localhost server; any other host requires an authenticated user.
 

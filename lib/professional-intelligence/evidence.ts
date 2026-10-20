@@ -66,20 +66,24 @@ export function findConflicts(claims: Claim[]): { professionalId: string; field:
     .map((g) => ({ professionalId: g[0].professionalId, field: g[0].field, claims: g }));
 }
 
+/** Verified claims that verifying `claim` would replace (single-value fields only). */
+export function supersededBy(claim: Claim, claims: Claim[]): Claim[] {
+  if (!SINGLE_VALUE_FIELDS.includes(claim.field)) return [];
+  return claims.filter((c) => c.id !== claim.id && c.status === "verified" && c.professionalId === claim.professionalId && c.field === claim.field && norm(c.value) !== norm(claim.value));
+}
+
 export function verifyClaim(
   claim: Claim,
-  ctx: { claims: Claim[]; sources: SourceEvidence[]; actor: Member; confidence: Confidence; now?: Date; supersedeIds?: string[] },
+  ctx: { claims: Claim[]; sources: SourceEvidence[]; actor: Member; confidence: Confidence; now?: Date },
 ): { claim: Claim; superseded: string[] } {
   const now = ctx.now ?? new Date();
   if (!canReview(ctx.actor)) throw new WorkflowError("Only a legal reviewer or admin can verify claims.");
   if (claim.status === "rejected") throw new WorkflowError("Rejected claims cannot be verified. Add a new claim instead.");
   // The reviewer's own check is enough: no verified source, Tier A record or tier-based confidence cap is required.
-  const supersede = ctx.supersedeIds ?? [];
-  if (SINGLE_VALUE_FIELDS.includes(claim.field)) {
-    const rivals = ctx.claims.filter((c) => c.id !== claim.id && live(c) && c.professionalId === claim.professionalId && c.field === claim.field && norm(c.value) !== norm(claim.value));
-    const blocking = rivals.filter((c) => c.status === "verified" && !supersede.includes(c.id));
-    if (blocking.length) throw new WorkflowError("Another verified value exists. Explicitly supersede it (reviewer decision) before verifying this one.");
-  }
+  // On a single-value field, verifying a different value automatically supersedes the existing verified one(s).
+  const supersede = SINGLE_VALUE_FIELDS.includes(claim.field)
+    ? supersededBy(claim, ctx.claims).map((c) => c.id)
+    : [];
   const at = now.toISOString();
   return {
     claim: { ...claim, status: "verified", confidence: ctx.confidence, reviewerId: ctx.actor.id, verifiedAt: at, supersedesId: supersede[0] ?? claim.supersedesId, updatedAt: at },

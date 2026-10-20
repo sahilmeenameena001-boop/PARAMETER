@@ -7,7 +7,7 @@ import { canEdit, canReview, isContactField, redactClaim } from "@/lib/professio
 import { CLAIM_FIELD_LABEL, TIER_A_REQUIRED } from "@/lib/professional-intelligence/constants";
 import { searchLinks } from "@/lib/professional-intelligence/research";
 import { deleteClaim, deleteProfessional } from "@/lib/professional-intelligence/workspace-ops";
-import { addClaim, bestVerifiedTier, dataQualityWarnings, findConflicts, maxConfidenceForTier, setClaimConfidence, verifyClaim } from "@/lib/professional-intelligence/evidence";
+import { addClaim, bestVerifiedTier, dataQualityWarnings, findConflicts, maxConfidenceForTier, setClaimConfidence, supersededBy, verifyClaim } from "@/lib/professional-intelligence/evidence";
 import { Badge, button, card, Confirm, Empty, field, fmtDate, Labeled, Modal, MultiSelect, newId, nowIso, primary, SectionTitle, SourceLinks, StatusBadge, TierBadge } from "./ui";
 import { attempt, type TabProps } from "./useWorkspace";
 import DiscoveryPanel from "./DiscoveryPanel";
@@ -103,7 +103,7 @@ export default function ProfileTab(props: TabProps) {
             <div className="flex gap-2 md:flex-col">
               <button className={button} disabled={!canReview(actor) || c.status === "verified" || c.status === "rejected"} title={canReview(actor) ? "" : "Legal reviewer role required"} onClick={() => setVerifying(ws.claims.find((x) => x.id === c.id)!)}><ShieldCheck size={15} />Verify</button>
               <button className={button} disabled={!canReview(actor) || c.status === "rejected"} onClick={() => setRejecting(ws.claims.find((x) => x.id === c.id)!)}><XCircle size={15} />Reject</button>
-              <button className={button} disabled={!canEdit(actor) || c.status === "verified" || c.redacted} title={c.status === "verified" ? "Verified values are locked — add a new claim to supersede" : ""} onClick={() => setEditingClaim(ws.claims.find((x) => x.id === c.id)!)}><Pencil size={15} />Edit</button>
+              <button className={button} disabled={!canEdit(actor) || c.status === "verified" || c.redacted} title={c.status === "verified" ? "Verified values are locked — add a new claim and verify it to replace this one" : ""} onClick={() => setEditingClaim(ws.claims.find((x) => x.id === c.id)!)}><Pencil size={15} />Edit</button>
               <button className={button} aria-label={`Delete claim ${c.value}`} disabled={!canEdit(actor) || c.status === "verified"} onClick={() => setDeletingClaim(ws.claims.find((x) => x.id === c.id)!)}><Trash2 size={15} /></button>
             </div>
           </article>;
@@ -166,13 +166,12 @@ function VerifyClaim({ claim, ws, actor, run, notify, onClose }: Pick<TabProps, 
   const tier = bestVerifiedTier(claim.sourceIds, ws.sources);
   const suggested = tier ? maxConfidenceForTier(tier) : "low";
   const [confidence, setConfidence] = useState<Confidence>(claim.confidence);
-  const rivals = ws.claims.filter((c) => c.id !== claim.id && c.professionalId === claim.professionalId && c.field === claim.field && c.status === "verified" && c.value !== claim.value);
-  const [supersede, setSupersede] = useState<string[]>([]);
+  const rivals = supersededBy(claim, ws.claims);
   function submit() {
-    const result = attempt(notify, () => verifyClaim(claim, { claims: ws.claims, sources: ws.sources, actor, confidence, supersedeIds: supersede }));
+    const result = attempt(notify, () => verifyClaim(claim, { claims: ws.claims, sources: ws.sources, actor, confidence }));
     if (!result) return;
     run("Verified claim", (w) => ({ ...w, claims: w.claims.map((c) => (c.id === claim.id ? result.claim : result.superseded.includes(c.id) ? { ...c, status: "rejected", notes: `${c.notes} Superseded by ${claim.id}.`.trim() } : c)) }), { entity: "claim", id: claim.id });
-    notify("Claim verified."); onClose();
+    notify(result.superseded.length ? "Claim verified — the previous verified value was replaced (kept as rejected for audit)." : "Claim verified."); onClose();
   }
   return <Modal title="Verify claim" onClose={onClose}>
     <p className="font-medium">{claim.value}</p>
@@ -180,7 +179,7 @@ function VerifyClaim({ claim, ws, actor, run, notify, onClose }: Pick<TabProps, 
     <div className="my-4"><SourceLinks ids={claim.sourceIds} sources={ws.sources} /></div>
     {!tier && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">No linked source is verified yet. You can still verify this claim on your own check.</p>}
     <Labeled text={`Confidence — your score (Tier ${tier ?? "–"} evidence typically supports up to "${suggested}")`}><select className={field} value={confidence} onChange={(e) => setConfidence(e.target.value as Confidence)}>{["low", "medium", "high"].map((c) => <option key={c}>{c}</option>)}</select></Labeled>
-    {rivals.length > 0 && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm"><p className="font-medium text-red-800">A different verified value exists. Supersede it explicitly:</p>{rivals.map((r) => <label key={r.id} className="mt-2 flex gap-2"><input type="checkbox" checked={supersede.includes(r.id)} onChange={(e) => setSupersede(e.target.checked ? [...supersede, r.id] : supersede.filter((x) => x !== r.id))} />“{r.value}” ({r.confidence})</label>)}</div>}
+    {rivals.length > 0 && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p className="font-medium">Verifying will replace the current verified value:</p><ul className="mt-1 list-disc pl-5">{rivals.map((r) => <li key={r.id}>“{r.value}” ({r.confidence}) — kept as rejected for audit</li>)}</ul></div>}
     <div className="mt-6 flex justify-end gap-2"><button className={button} onClick={onClose}>Cancel</button><button className={primary} onClick={submit}><ShieldCheck size={15} />Verify</button></div>
   </Modal>;
 }
